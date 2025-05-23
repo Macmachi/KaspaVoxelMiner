@@ -46,8 +46,25 @@
 
     <div id="game-container">
         <div id="instructions">
-            <p>Click on blocks to reveal them. Find all Kaspa blocks without hitting any traps!</p>
-            <p>Use mouse to rotate camera and scroll wheel to zoom.</p>
+            <p>Click/tap on blocks to reveal them. Find all Kaspa blocks without hitting any traps!</p>
+            <p id="desktop-instructions">Use mouse to rotate camera and scroll wheel to zoom.</p>
+            <p id="mobile-instructions" style="display: none;">Use touch to rotate camera. Use zoom buttons to zoom in/out.</p>
+        </div>
+
+        <!-- Mobile touch controls -->
+        <div id="mobile-controls">
+            <div id="zoom-controls">
+                <button class="mobile-control-btn" id="zoom-in-btn">+</button>
+                <button class="mobile-control-btn" id="zoom-out-btn">-</button>
+            </div>
+        </div>
+
+        <!-- Touch helper overlay -->
+        <div id="touch-helper">
+            <p>Touch and drag to rotate the view</p>
+            <p>Tap a block to reveal it</p>
+            <p>Use + and - buttons to zoom</p>
+            <button id="touch-helper-close" style="margin-top: 15px; padding: 10px 20px; background: #71C7BA; border: none; border-radius: 5px; color: white; cursor: pointer;">Got it!</button>
         </div>
     </div>
 

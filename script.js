@@ -43,13 +43,54 @@ const COLORS = {
 let raycaster, hoveredBlock = null;
 let kaspaTexture = null;
 
+// Mobile detection and touch variables
+let isMobile = false;
+let touchStartTime = 0;
+let touchStartPosition = { x: 0, y: 0 };
+let touchMoved = false;
+const touchMoveThreshold = 15;
+const touchTimeThreshold = 300;
+
+// Camera control variables (used by both mouse and touch)
+let isDragging = false;
+let hasDragged = false;
+let previousPosition = { x: 0, y: 0 };
+let dragStartPosition = { x: 0, y: 0 };
+let cameraDistance = 15;
+let cameraAngleX = 0;
+let cameraAngleY = 0;
+const dragThreshold = 15;
+let inputStartTime = 0;
+const clickTimeThreshold = 300;
+
 // Game initialization
 function init() {
+    detectMobile();
     setupThreeJS();
     setupControls();
     setupEventListeners();
+    setupMobileControls();
     loadBestTime();
     startNewGame();
+}
+
+// Mobile detection
+function detectMobile() {
+    isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+               (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+    
+    if (isMobile) {
+        document.getElementById('mobile-controls').classList.add('show');
+        document.getElementById('desktop-instructions').style.display = 'none';
+        document.getElementById('mobile-instructions').style.display = 'block';
+        
+        // Show touch helper on first visit
+        if (!localStorage.getItem('kaspa-miner-touch-helper-shown')) {
+            setTimeout(() => {
+                document.getElementById('touch-helper').classList.add('show');
+            }, 1000);
+        }
+    }
 }
 
 // Three.js setup with improved lighting
@@ -136,20 +177,8 @@ function setupThreeJS() {
     raycaster = new THREE.Raycaster();
 }
 
-// Camera controls setup
+// Camera controls setup (unified for mouse and touch)
 function setupControls() {
-    // Simple camera controls (rotation with mouse)
-    let isDragging = false;
-    let hasDragged = false;
-    let previousMousePosition = { x: 0, y: 0 };
-    let dragStartPosition = { x: 0, y: 0 };
-    let cameraDistance = 15;
-    let cameraAngleX = 0;
-    let cameraAngleY = 0;
-    const dragThreshold = 15; // Increased threshold for better drag detection
-    let mouseDownTime = 0;
-    const clickTimeThreshold = 300; // Maximum time for a click (ms)
-    
     // Initial camera position
     updateCameraPosition();
     camera.lookAt(0, 0, 0);
@@ -162,93 +191,195 @@ function setupControls() {
         camera.lookAt(0, 0, 0);
     }
     
+    // Mouse events
     renderer.domElement.addEventListener('mousedown', function(e) {
         if (e.button === 0) { // Left click
-            isDragging = true;
-            hasDragged = false;
-            mouseDownTime = Date.now();
-            previousMousePosition = { x: e.clientX, y: e.clientY };
-            dragStartPosition = { x: e.clientX, y: e.clientY };
+            startDrag(e.clientX, e.clientY);
         }
     });
     
     renderer.domElement.addEventListener('mousemove', function(e) {
         if (isDragging) {
-            const totalDragDistance = Math.sqrt(
-                Math.pow(e.clientX - dragStartPosition.x, 2) + 
-                Math.pow(e.clientY - dragStartPosition.y, 2)
-            );
-            
-            // If moved more than threshold pixels from start, it's a drag
-            if (totalDragDistance > dragThreshold) {
-                if (!hasDragged) {
-                    hasDragged = true;
-                    // Prevent any click events from firing
-                    e.preventDefault();
-                    e.stopPropagation();
-                }
-                
-                const deltaMove = {
-                    x: e.clientX - previousMousePosition.x,
-                    y: e.clientY - previousMousePosition.y
-                };
-                
-                cameraAngleY += deltaMove.x * 0.01;
-                cameraAngleX += deltaMove.y * 0.01;
-                
-                // Limit vertical angle
-                cameraAngleX = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, cameraAngleX));
-                
-                updateCameraPosition();
-                previousMousePosition = { x: e.clientX, y: e.clientY };
-            }
+            handleDrag(e.clientX, e.clientY);
         }
     });
     
     renderer.domElement.addEventListener('mouseup', function(e) {
         if (e.button === 0) {
-            const clickDuration = Date.now() - mouseDownTime;
-            
-            // Only treat as click if:
-            // 1. No dragging occurred
-            // 2. Mouse was held down for less than clickTimeThreshold
-            // 3. We're still in the same approximate position
-            if (isDragging && !hasDragged && clickDuration < clickTimeThreshold) {
-                // Small delay to ensure this is really a click and not start of drag
-                setTimeout(() => {
-                    if (!hasDragged) {
-                        handleBlockClick(e);
-                    }
-                }, 10);
-            }
-            
-            isDragging = false;
-            hasDragged = false;
+            endDrag(e.clientX, e.clientY, e);
         }
     });
     
-    // Remove the click event listener to avoid double handling
-    // The mouseup handler now manages clicks properly
+    // Touch events
+    renderer.domElement.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            startDrag(touch.clientX, touch.clientY);
+        }
+    }, { passive: false });
     
-    // Zoom with scroll wheel
+    renderer.domElement.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+        if (e.touches.length === 1 && isDragging) {
+            const touch = e.touches[0];
+            handleDrag(touch.clientX, touch.clientY);
+        }
+    }, { passive: false });
+    
+    renderer.domElement.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        if (isDragging) {
+            // For touch, we don't have the exact end position, use the last known position
+            endDrag(previousPosition.x, previousPosition.y, e);
+        }
+    }, { passive: false });
+    
+    // Unified drag functions
+    function startDrag(x, y) {
+        isDragging = true;
+        hasDragged = false;
+        inputStartTime = Date.now();
+        previousPosition = { x, y };
+        dragStartPosition = { x, y };
+    }
+    
+    function handleDrag(x, y) {
+        if (!isDragging) return;
+        
+        const totalDragDistance = Math.sqrt(
+            Math.pow(x - dragStartPosition.x, 2) + 
+            Math.pow(y - dragStartPosition.y, 2)
+        );
+        
+        // If moved more than threshold pixels from start, it's a drag
+        if (totalDragDistance > dragThreshold) {
+            if (!hasDragged) {
+                hasDragged = true;
+            }
+            
+            const deltaMove = {
+                x: x - previousPosition.x,
+                y: y - previousPosition.y
+            };
+            
+            cameraAngleY += deltaMove.x * 0.01;
+            cameraAngleX += deltaMove.y * 0.01;
+            
+            // Limit vertical angle
+            cameraAngleX = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, cameraAngleX));
+            
+            updateCameraPosition();
+            previousPosition = { x, y };
+        }
+    }
+    
+    function endDrag(x, y, event) {
+        if (!isDragging) return;
+        
+        const clickDuration = Date.now() - inputStartTime;
+        
+        // Only treat as click/tap if:
+        // 1. No dragging occurred
+        // 2. Input was held down for less than clickTimeThreshold
+        if (!hasDragged && clickDuration < clickTimeThreshold) {
+            // Small delay to ensure this is really a click and not start of drag
+            setTimeout(() => {
+                if (!hasDragged) {
+                    handleBlockClick(event, x, y);
+                }
+            }, 10);
+        }
+        
+        isDragging = false;
+        hasDragged = false;
+    }
+    
+    // Zoom with scroll wheel (desktop only)
     renderer.domElement.addEventListener('wheel', function(e) {
         e.preventDefault();
         cameraDistance += e.deltaY * 0.01;
         cameraDistance = Math.max(8, Math.min(25, cameraDistance));
         updateCameraPosition();
     });
+    
+    // Store updateCameraPosition function for mobile zoom buttons
+    window.updateCameraPosition = updateCameraPosition;
 }
 
-// Block click handling (separated from click event)
-function handleBlockClick(event) {
+// Mobile controls setup
+function setupMobileControls() {
+    if (!isMobile) return;
+    
+    // Zoom in button
+    document.getElementById('zoom-in-btn').addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        zoomCamera(-1);
+    }, { passive: false });
+    
+    document.getElementById('zoom-in-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        zoomCamera(-1);
+    });
+    
+    // Zoom out button
+    document.getElementById('zoom-out-btn').addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        zoomCamera(1);
+    }, { passive: false });
+    
+    document.getElementById('zoom-out-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        zoomCamera(1);
+    });
+    
+    // Touch helper close button
+    const touchHelperClose = document.getElementById('touch-helper-close');
+    if (touchHelperClose) {
+        touchHelperClose.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('touch-helper').classList.remove('show');
+            localStorage.setItem('kaspa-miner-touch-helper-shown', 'true');
+        });
+        
+        touchHelperClose.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('touch-helper').classList.remove('show');
+            localStorage.setItem('kaspa-miner-touch-helper-shown', 'true');
+        });
+    }
+    
+    function zoomCamera(direction) {
+        cameraDistance += direction * 2;
+        cameraDistance = Math.max(8, Math.min(25, cameraDistance));
+        window.updateCameraPosition();
+        
+        // Add visual feedback
+        const btn = direction < 0 ? document.getElementById('zoom-in-btn') : document.getElementById('zoom-out-btn');
+        btn.classList.add('tap-feedback');
+        setTimeout(() => btn.classList.remove('tap-feedback'), 200);
+    }
+}
+
+// Block click handling (updated for touch support)
+function handleBlockClick(event, x, y) {
     if (!gameState.isPlaying || gameState.isGameOver) return;
     
-    event.preventDefault();
-    
-    // Calculate mouse coordinates at click moment
+    // Calculate coordinates
     const rect = renderer.domElement.getBoundingClientRect();
-    const mouseX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    const mouseY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    let mouseX, mouseY;
+    
+    if (x !== undefined && y !== undefined) {
+        // Coordinates provided (from unified touch/mouse handler)
+        mouseX = ((x - rect.left) / rect.width) * 2 - 1;
+        mouseY = -((y - rect.top) / rect.height) * 2 + 1;
+    } else {
+        // Fallback to event coordinates
+        mouseX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouseY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    }
     
     // Raycast to detect clicked block
     const mouseVector = new THREE.Vector2(mouseX, mouseY);
@@ -266,12 +397,23 @@ function handleBlockClick(event) {
     
     if (intersects.length > 0) {
         const clickedBlock = intersects[0].object;
-        const x = clickedBlock.userData.gridX;
-        const y = clickedBlock.userData.gridY;
-        const z = clickedBlock.userData.gridZ;
+        const gridX = clickedBlock.userData.gridX;
+        const gridY = clickedBlock.userData.gridY;
+        const gridZ = clickedBlock.userData.gridZ;
         
-        if (x !== undefined && y !== undefined && z !== undefined) {
-            revealBlock(x, y, z);
+        if (gridX !== undefined && gridY !== undefined && gridZ !== undefined) {
+            revealBlock(gridX, gridY, gridZ);
+            
+            // Add visual feedback for mobile
+            if (isMobile) {
+                clickedBlock.userData.originalScale = clickedBlock.scale.clone();
+                clickedBlock.scale.multiplyScalar(1.1);
+                setTimeout(() => {
+                    if (clickedBlock.userData.originalScale) {
+                        clickedBlock.scale.copy(clickedBlock.userData.originalScale);
+                    }
+                }, 150);
+            }
         }
     }
 }
@@ -286,6 +428,32 @@ function setupEventListeners() {
     
     // Window resize
     window.addEventListener('resize', onWindowResize);
+    
+    // Prevent context menu on touch devices
+    if (isMobile) {
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        });
+        
+        // Prevent default touch behaviors
+        document.body.addEventListener('touchstart', function(e) {
+            if (e.target.closest('#game-container')) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+        
+        document.body.addEventListener('touchend', function(e) {
+            if (e.target.closest('#game-container')) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+        
+        document.body.addEventListener('touchmove', function(e) {
+            if (e.target.closest('#game-container')) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+    }
 }
 
 // Start new game
@@ -310,7 +478,7 @@ function startNewGame() {
     
     // Update interface
     updateUI();
-    updateStatus('New game started! Click on a block to begin.');
+    updateStatus('New game started! ' + (isMobile ? 'Tap' : 'Click') + ' on a block to begin.');
     
     // Start timer
     startTimer();
