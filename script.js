@@ -56,8 +56,8 @@ let isDragging = false;
 let hasDragged = false;
 let previousPosition = { x: 0, y: 0 };
 let dragStartPosition = { x: 0, y: 0 };
-let cameraDistance = 15;
-let cameraAngleX = 0;
+let cameraDistance = 10;
+let cameraAngleX = 0; 
 let cameraAngleY = 0;
 const dragThreshold = 15;
 let inputStartTime = 0;
@@ -80,15 +80,13 @@ function detectMobile() {
                (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
     
     if (isMobile) {
-        document.getElementById('mobile-controls').classList.add('show');
+        // Masquer toutes les instructions sur mobile
         document.getElementById('desktop-instructions').style.display = 'none';
-        document.getElementById('mobile-instructions').style.display = 'block';
+        document.getElementById('mobile-instructions').style.display = 'none';
         
-        // Show touch helper on first visit
-        if (!localStorage.getItem('kaspa-miner-touch-helper-shown')) {
-            setTimeout(() => {
-                document.getElementById('touch-helper').classList.add('show');
-            }, 1000);
+        // Masquer également les contrôles mobiles car nous utiliserons les gestes tactiles
+        if (document.getElementById('mobile-controls')) {
+            document.getElementById('mobile-controls').style.display = 'none';
         }
     }
 }
@@ -158,20 +156,56 @@ function setupThreeJS() {
     leftLight.castShadow = false;
     scene.add(leftLight);
     
-    // Loading Kaspa texture (webp format)
-    const textureLoader = new THREE.TextureLoader();
-    textureLoader.load('./kas_logo.webp', 
-        function(texture) {
-            kaspaTexture = texture;
-            console.log('Kaspa texture loaded successfully');
-        },
-        function(progress) {
-            console.log('Loading texture:', (progress.loaded / progress.total * 100) + '%');
-        },
-        function(error) {
-            console.warn('Error loading Kaspa texture:', error);
-        }
-    );
+// Create Kaspa texture with a canvas (to avoid CORS issues)
+    kaspaTexture = createKaspaTexture();
+    console.log('Kaspa texture created');
+
+// Create a Kaspa texture using canvas (to avoid CORS issues)
+function createKaspaTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    
+    // Fill background with dark color
+    ctx.fillStyle = '#222222'; // Dark background
+    ctx.fillRect(0, 0, 256, 256);
+    
+    // Draw a K with a coin/circle shape
+    ctx.fillStyle = '#71C7BA'; // Kaspa teal color for the circle
+    
+    // Draw the circle
+    ctx.beginPath();
+    ctx.arc(128, 128, 90, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Draw the inverted K shape (like in the Kaspa logo)
+    ctx.fillStyle = '#FFFFFF'; // White color for the K
+    ctx.beginPath();
+    
+    // Right vertical bar of inverted K
+    ctx.rect(143, 68, 20, 120);
+    
+    // Upper diagonal of inverted K (going left)
+    ctx.moveTo(143, 128);
+    ctx.lineTo(93, 68);
+    ctx.lineTo(83, 88);
+    ctx.lineTo(123, 138);
+    ctx.closePath();
+    
+    // Lower diagonal of inverted K (going left)
+    ctx.moveTo(143, 128);
+    ctx.lineTo(93, 188);
+    ctx.lineTo(103, 198);
+    ctx.lineTo(143, 148);
+    ctx.closePath();
+    
+    ctx.fill();
+    
+    // Plus de bordure autour du cercle
+    
+    return new THREE.CanvasTexture(canvas);
+}
     
     // Raycaster for interaction
     raycaster = new THREE.Raycaster();
@@ -211,26 +245,71 @@ function setupControls() {
     });
     
     // Touch events
+    let pinchStartDistance = 0;
+    
     renderer.domElement.addEventListener('touchstart', function(e) {
         e.preventDefault();
+        
         if (e.touches.length === 1) {
+            // Single touch - rotate
             const touch = e.touches[0];
             startDrag(touch.clientX, touch.clientY);
+        } 
+        else if (e.touches.length === 2) {
+            // Two touches - pinch to zoom
+            isDragging = false; // Stop drag if it was happening
+            
+            // Calculate initial pinch distance
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            pinchStartDistance = Math.hypot(
+                touch1.clientX - touch2.clientX,
+                touch1.clientY - touch2.clientY
+            );
         }
     }, { passive: false });
     
     renderer.domElement.addEventListener('touchmove', function(e) {
         e.preventDefault();
+        
         if (e.touches.length === 1 && isDragging) {
+            // Single touch - handle rotation
             const touch = e.touches[0];
             handleDrag(touch.clientX, touch.clientY);
+        } 
+        else if (e.touches.length === 2) {
+            // Two touches - handle zoom
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            
+            // Calculate current pinch distance
+            const currentDistance = Math.hypot(
+                touch1.clientX - touch2.clientX,
+                touch1.clientY - touch2.clientY
+            );
+            
+            // Determine zoom direction and amount
+            if (pinchStartDistance > 0) {
+                const zoomAmount = (pinchStartDistance - currentDistance) * 0.05;
+                cameraDistance = Math.max(8, Math.min(25, cameraDistance + zoomAmount));
+                window.updateCameraPosition();
+            }
+            
+            // Update for next move
+            pinchStartDistance = currentDistance;
         }
     }, { passive: false });
     
     renderer.domElement.addEventListener('touchend', function(e) {
         e.preventDefault();
-        if (isDragging) {
-            // For touch, we don't have the exact end position, use the last known position
+        
+        // Reset pinch distance when fingers are lifted
+        if (e.touches.length < 2) {
+            pinchStartDistance = 0;
+        }
+        
+        // Handle end of rotation drag
+        if (isDragging && e.touches.length === 0) {
             endDrag(previousPosition.x, previousPosition.y, e);
         }
     }, { passive: false });
@@ -385,10 +464,12 @@ function handleBlockClick(event, x, y) {
     const mouseVector = new THREE.Vector2(mouseX, mouseY);
     raycaster.setFromCamera(mouseVector, camera);
     
-    // Filter objects to only take game blocks (including numbered blocks)
+    // Filter objects to only take game blocks (excluding numbered blocks marked as ignoreClick)
     const gameBlocks = [];
     scene.traverse((child) => {
-        if (child.userData && child.userData.isGameBlock && !child.userData.isIndicator) {
+        if (child.userData && child.userData.isGameBlock && 
+            !child.userData.isIndicator && 
+            !child.userData.ignoreClick) {
             gameBlocks.push(child);
         }
     });
@@ -402,6 +483,17 @@ function handleBlockClick(event, x, y) {
         const gridZ = clickedBlock.userData.gridZ;
         
         if (gridX !== undefined && gridY !== undefined && gridZ !== undefined) {
+            // Vérifier s'il s'agit d'un bloc piège visible (révélé par les blocs adjacents)
+            const block = gameGrid[gridX][gridY][gridZ];
+            
+            // Si c'est un piège et qu'il est visible (rouge), déclencher l'explosion
+            if (block.type === BLOCK_TYPES.TRAP && block.revealed) {
+                // Déclencher l'explosion
+                gameOver(false);
+                return;
+            }
+            
+            // Sinon, révéler le bloc normalement
             revealBlock(gridX, gridY, gridZ);
             
             // Add visual feedback for mobile
@@ -582,21 +674,24 @@ function calculateNeighborTraps() {
                 if (gameGrid[x][y][z].type !== BLOCK_TYPES.TRAP) {
                     let trapCount = 0;
                     
-                    // Check all 26 possible neighbors in 3D
-                    for (let dx = -1; dx <= 1; dx++) {
-                        for (let dy = -1; dy <= 1; dy++) {
-                            for (let dz = -1; dz <= 1; dz++) {
-                                if (dx === 0 && dy === 0 && dz === 0) continue;
-                                
-                                const nx = x + dx;
-                                const ny = y + dy;
-                                const nz = z + dz;
-                                
-                                if (nx >= 0 && nx < size && ny >= 0 && ny < size && nz >= 0 && nz < size) {
-                                    if (gameGrid[nx][ny][nz].type === BLOCK_TYPES.TRAP) {
-                                        trapCount++;
-                                    }
-                                }
+                    // Vérifier seulement les 6 voisins directs (qui partagent une face)
+                    const directions = [
+                        {dx: -1, dy: 0, dz: 0}, // gauche
+                        {dx: 1, dy: 0, dz: 0},  // droite
+                        {dx: 0, dy: -1, dz: 0}, // bas
+                        {dx: 0, dy: 1, dz: 0},  // haut
+                        {dx: 0, dy: 0, dz: -1}, // arrière
+                        {dx: 0, dy: 0, dz: 1}   // avant
+                    ];
+                    
+                    for (const dir of directions) {
+                        const nx = x + dir.dx;
+                        const ny = y + dir.dy;
+                        const nz = z + dir.dz;
+                        
+                        if (nx >= 0 && nx < size && ny >= 0 && ny < size && nz >= 0 && nz < size) {
+                            if (gameGrid[nx][ny][nz].type === BLOCK_TYPES.TRAP) {
+                                trapCount++;
                             }
                         }
                     }
@@ -814,17 +909,86 @@ function revealBlock(x, y, z) {
 // Reveal trap
 function revealTrap(x, y, z) {
     const block = gameGrid[x][y][z];
-    block.mesh.material.color.setHex(COLORS.trap);
     
-    // Explosion animation
+    // Change material to red for trap blocks
+    if (Array.isArray(block.mesh.material)) {
+        block.mesh.material.forEach(mat => {
+            mat.color.setHex(COLORS.trap);
+        });
+    } else {
+        block.mesh.material.color.setHex(COLORS.trap);
+    }
+    
+    // Initial explosion animation
     const originalScale = block.mesh.scale.clone();
     block.mesh.scale.multiplyScalar(1.2);
     
     setTimeout(() => {
         if (block.mesh.scale) {
             block.mesh.scale.copy(originalScale);
+            
+            // Set this trap for pulse animation if neighbor blocks are revealed
+            block.pulsing = true;
+            checkTrapPulseCondition(x, y, z);
         }
     }, 200);
+}
+
+// Check if a trap should pulse (if neighboring blocks are revealed)
+function checkTrapPulseCondition(x, y, z) {
+    const size = gameGrid.length;
+    const block = gameGrid[x][y][z];
+    
+    // Only pulse if this is a revealed trap
+    if (!block.revealed || block.type !== BLOCK_TYPES.TRAP) return;
+    
+    let revealedNeighbors = 0;
+    let totalNeighbors = 0;
+    
+    // Check all 26 possible neighbors in 3D
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dz = -1; dz <= 1; dz++) {
+                if (dx === 0 && dy === 0 && dz === 0) continue;
+                
+                const nx = x + dx;
+                const ny = y + dy;
+                const nz = z + dz;
+                
+                if (nx >= 0 && nx < size && ny >= 0 && ny < size && nz >= 0 && nz < size) {
+                    totalNeighbors++;
+                    if (gameGrid[nx][ny][nz].revealed) {
+                        revealedNeighbors++;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Pulse if at least some neighbors are revealed
+    if (revealedNeighbors > 0) {
+        startTrapPulseAnimation(block);
+    }
+}
+
+// Pulse animation for traps
+function startTrapPulseAnimation(block) {
+    if (!block.pulsing) return;
+    
+    // Create pulse animation
+    const pulseAnimation = () => {
+        if (!block.mesh || !block.pulsing) return;
+        
+        // Sine wave for smooth pulse (0.95 to 1.05 scale)
+        const pulseScale = 1 + 0.05 * Math.sin(Date.now() * 0.005);
+        block.mesh.scale.set(pulseScale, pulseScale, pulseScale);
+        
+        // Continue animation
+        requestAnimationFrame(pulseAnimation);
+    };
+    
+    // Start the animation
+    pulseAnimation();
 }
 
 // Reveal Kaspa block with texture and destruction animation
@@ -865,17 +1029,100 @@ function revealEmpty(x, y, z) {
     if (block.neighborTraps > 0) {
         // Create cube with number on all faces
         const numberTexture = createNumberTexture(block.neighborTraps);
-        const numberMaterial = new THREE.MeshLambertMaterial({ map: numberTexture });
+        const numberMaterial = new THREE.MeshLambertMaterial({ 
+            map: numberTexture,
+            transparent: true,
+            opacity: 0.6
+        });
         const materials = [
             numberMaterial, numberMaterial, numberMaterial,
             numberMaterial, numberMaterial, numberMaterial
         ];
         block.mesh.material = materials;
+        
+        // Marquer ce bloc comme "insensible aux clics"
+        block.mesh.userData.ignoreClick = true;
+        
+        // Check adjacent traps to update their pulse state
+        activateAdjacentTrapsPulse(x, y, z);
     } else {
         // Empty block with no adjacent traps - destroy it like Kaspa blocks
         animateBlockDestruction(block, () => {
-            // No indicator needed for empty blocks, just destruction
+            // Check adjacent traps to update their pulse state
+            activateAdjacentTrapsPulse(x, y, z);
         });
+    }
+}
+
+// Activate pulse on adjacent trap blocks
+function activateAdjacentTrapsPulse(x, y, z) {
+    const size = gameGrid.length;
+    
+    // Vérifier chaque piège dans la grille
+    for (let tx = 0; tx < size; tx++) {
+        for (let ty = 0; ty < size; ty++) {
+            for (let tz = 0; tz < size; tz++) {
+                // Vérifier uniquement les pièges non révélés
+                if (gameGrid[tx][ty][tz].type !== BLOCK_TYPES.TRAP || gameGrid[tx][ty][tz].revealed) continue;
+                
+                // Vérifier si tous les blocs adjacents non-pièges sont révélés
+                let allNonTrapNeighborsRevealed = true;
+                let hasNonTrapNeighbor = false;
+                
+                // Vérifier seulement les 6 voisins directs (qui partagent une face)
+                const directions = [
+                    {dx: -1, dy: 0, dz: 0}, // gauche
+                    {dx: 1, dy: 0, dz: 0},  // droite
+                    {dx: 0, dy: -1, dz: 0}, // bas
+                    {dx: 0, dy: 1, dz: 0},  // haut
+                    {dx: 0, dy: 0, dz: -1}, // arrière
+                    {dx: 0, dy: 0, dz: 1}   // avant
+                ];
+                
+                for (const dir of directions) {
+                    const nx = tx + dir.dx;
+                    const ny = ty + dir.dy;
+                    const nz = tz + dir.dz;
+                    
+                    // Vérifier si le voisin est dans les limites de la grille
+                    if (nx >= 0 && nx < size && ny >= 0 && ny < size && nz >= 0 && nz < size) {
+                        const neighbor = gameGrid[nx][ny][nz];
+                        
+                        // Si c'est un bloc non-piège
+                        if (neighbor.type !== BLOCK_TYPES.TRAP) {
+                            hasNonTrapNeighbor = true;
+                            
+                            // Si ce bloc n'est pas révélé, le piège ne doit pas être visible
+                            if (!neighbor.revealed) {
+                                allNonTrapNeighborsRevealed = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // Si tous les blocs adjacents non-pièges sont révélés, révéler le piège
+                if (hasNonTrapNeighbor && allNonTrapNeighborsRevealed) {
+                    const trapBlock = gameGrid[tx][ty][tz];
+                    
+                    // Marquer comme révélé et le faire pulser
+                    trapBlock.revealed = true;
+                    trapBlock.pulsing = true;
+                    
+                    // Rendre le piège visible (rouge et pulsant)
+                    if (trapBlock.mesh) {
+                        if (Array.isArray(trapBlock.mesh.material)) {
+                            trapBlock.mesh.material.forEach(mat => {
+                                mat.color.setHex(COLORS.trap);
+                            });
+                        } else {
+                            trapBlock.mesh.material.color.setHex(COLORS.trap);
+                        }
+                        startTrapPulseAnimation(trapBlock);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -980,47 +1227,63 @@ function createKaspaIndicator(x, y, z) {
     animate();
 }
 
-// Revelation propagation (flood fill)
+// Revelation propagation (flood fill) - Version équilibrée
 function propagateReveal(x, y, z) {
     const size = gameGrid.length;
     const queue = [{ x, y, z }];
     const visited = new Set();
     
-    while (queue.length > 0) {
+    // Définir seulement les 6 voisins directs (qui partagent une face)
+    const directions = [
+        {dx: -1, dy: 0, dz: 0}, // gauche
+        {dx: 1, dy: 0, dz: 0},  // droite
+        {dx: 0, dy: -1, dz: 0}, // bas
+        {dx: 0, dy: 1, dz: 0},  // haut
+        {dx: 0, dy: 0, dz: -1}, // arrière
+        {dx: 0, dy: 0, dz: 1}   // avant
+    ];
+    
+    // Limite de propagation - équilibre entre trop facile et trop difficile
+    let blocksRevealed = 0;
+    const maxPropagationBlocks = 12 + Math.floor(Math.random() * 4); // 12-15 blocs maximum
+    
+    // Profondeur maximum - évite la propagation excessive dans une seule direction
+    const maxDepth = 3;
+    const depths = {};
+    depths[`${x},${y},${z}`] = 0;
+    
+    while (queue.length > 0 && blocksRevealed < maxPropagationBlocks) {
         const current = queue.shift();
         const key = `${current.x},${current.y},${current.z}`;
+        const currentDepth = depths[key];
         
         if (visited.has(key)) continue;
         visited.add(key);
         
-        // Check neighbors
-        for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-                for (let dz = -1; dz <= 1; dz++) {
-                    if (dx === 0 && dy === 0 && dz === 0) continue;
+        // Vérifier seulement les 6 voisins directs dans un ordre prévisible
+        for (const dir of directions) {
+            const nx = current.x + dir.dx;
+            const ny = current.y + dir.dy;
+            const nz = current.z + dir.dz;
+            const newKey = `${nx},${ny},${nz}`;
+            
+            if (nx >= 0 && nx < size && ny >= 0 && ny < size && nz >= 0 && nz < size) {
+                const neighbor = gameGrid[nx][ny][nz];
+                
+                // Ne révéler que les blocs vides (ni pièges, ni Kaspa)
+                if (!neighbor.revealed && neighbor.type === BLOCK_TYPES.EMPTY) {
+                    neighbor.revealed = true;
+                    gameState.revealedBlocks++;
+                    blocksRevealed++;
                     
-                    const nx = current.x + dx;
-                    const ny = current.y + dy;
-                    const nz = current.z + dz;
+                    revealEmpty(nx, ny, nz);
                     
-                    if (nx >= 0 && nx < size && ny >= 0 && ny < size && nz >= 0 && nz < size) {
-                        const neighbor = gameGrid[nx][ny][nz];
-                        
-                        if (!neighbor.revealed && neighbor.type !== BLOCK_TYPES.TRAP) {
-                            neighbor.revealed = true;
-                            gameState.revealedBlocks++;
-                            
-                            if (neighbor.type === BLOCK_TYPES.KASPA) {
-                                revealKaspa(nx, ny, nz);
-                                gameState.kasCollected++;
-                            } else {
-                                revealEmpty(nx, ny, nz);
-                                
-                                // Continue propagation if no adjacent traps
-                                if (neighbor.neighborTraps === 0) {
-                                    queue.push({ x: nx, y: ny, z: nz });
-                                }
-                            }
+                    // Continue propagation if no adjacent traps, but with depth and block limits
+                    if (neighbor.neighborTraps === 0 && blocksRevealed < maxPropagationBlocks) {
+                        // Éviter de propager trop profondément dans une direction
+                        if (currentDepth < maxDepth) {
+                            depths[newKey] = currentDepth + 1;
+                            queue.push({ x: nx, y: ny, z: nz });
                         }
                     }
                 }
@@ -1031,22 +1294,8 @@ function propagateReveal(x, y, z) {
 
 // Victory conditions check
 function checkVictory() {
-    let revealedSafeBlocks = 0;
-    
-    const size = gameGrid.length;
-    for (let x = 0; x < size; x++) {
-        for (let y = 0; y < size; y++) {
-            for (let z = 0; z < size; z++) {
-                const block = gameGrid[x][y][z];
-                if (block.revealed && block.type !== BLOCK_TYPES.TRAP) {
-                    revealedSafeBlocks++;
-                }
-            }
-        }
-    }
-    
-    // Victory if all safe blocks are revealed
-    if (revealedSafeBlocks === gameState.totalSafeBlocks) {
+    // Victoire si tous les blocs Kaspa sont collectés
+    if (gameState.kasCollected === gameState.totalKasBlocks) {
         gameOver(true);
     }
 }
@@ -1064,12 +1313,98 @@ function gameOver(victory) {
                  `Kas collected: ${gameState.kasCollected}/${gameState.totalKasBlocks}<br>Time: ${formatTime(gameState.currentTime)}`);
     } else {
         updateStatus('💥 Defeat! You hit a trap!');
-        showModal('Defeat!', 
-                 'Too bad! You hit a trap.',
-                 `Kas collected: ${gameState.kasCollected}/${gameState.totalKasBlocks}<br>Time: ${formatTime(gameState.currentTime)}`);
         
-        // Reveal all traps
-        revealAllTraps();
+        // Instead of showing a popup, create an explosion animation
+        createExplosionAnimation();
+        
+        // After animation, we'll restart the game
+        setTimeout(() => {
+            startNewGame();
+        }, 2000); // 2 seconds of explosion animation
+    }
+}
+
+// Create an explosion animation when player hits a trap
+function createExplosionAnimation() {
+    const size = gameGrid.length;
+    const spacing = 1;
+    const offset = (size - 1) * spacing / 2;
+    
+    // Make all blocks explode outward
+    for (let x = 0; x < size; x++) {
+        for (let y = 0; y < size; y++) {
+            for (let z = 0; z < size; z++) {
+                const block = gameGrid[x][y][z];
+                
+                if (block.mesh) {
+                    // Set all blocks to red (trap color)
+                    if (Array.isArray(block.mesh.material)) {
+                        block.mesh.material.forEach(mat => {
+                            mat.color.setHex(COLORS.trap);
+                        });
+                    } else {
+                        block.mesh.material.color.setHex(COLORS.trap);
+                    }
+                    
+                    // Add random velocity to each block
+                    const velocity = {
+                        x: (Math.random() - 0.5) * 0.5,
+                        y: (Math.random() - 0.5) * 0.5 + 0.2, // Bias upward
+                        z: (Math.random() - 0.5) * 0.5
+                    };
+                    
+                    // Add random rotation
+                    const rotationVelocity = {
+                        x: (Math.random() - 0.5) * 0.2,
+                        y: (Math.random() - 0.5) * 0.2,
+                        z: (Math.random() - 0.5) * 0.2
+                    };
+                    
+                    // Store original position for reference
+                    const originalPosition = block.mesh.position.clone();
+                    
+                    // Animation function
+                    const animateExplosion = () => {
+                        if (!block.mesh) return; // Stop if block is removed
+                        
+                        // Update position based on velocity
+                        block.mesh.position.x += velocity.x;
+                        block.mesh.position.y += velocity.y;
+                        block.mesh.position.z += velocity.z;
+                        
+                        // Add gravity effect
+                        velocity.y -= 0.01;
+                        
+                        // Add rotation
+                        block.mesh.rotation.x += rotationVelocity.x;
+                        block.mesh.rotation.y += rotationVelocity.y;
+                        block.mesh.rotation.z += rotationVelocity.z;
+                        
+                        // Shrink block gradually
+                        if (block.mesh.scale.x > 0.01) {
+                            block.mesh.scale.multiplyScalar(0.97);
+                        } else {
+                            scene.remove(block.mesh);
+                            return; // Stop animation when block is too small
+                        }
+                        
+                        // Continue animation
+                        requestAnimationFrame(animateExplosion);
+                    };
+                    
+                    // Start animation with a slight delay based on distance from center
+                    const distanceFromCenter = Math.sqrt(
+                        Math.pow(x - size/2, 2) + 
+                        Math.pow(y - size/2, 2) + 
+                        Math.pow(z - size/2, 2)
+                    );
+                    
+                    setTimeout(() => {
+                        animateExplosion();
+                    }, distanceFromCenter * 50); // Delay based on distance
+                }
+            }
+        }
     }
 }
 
