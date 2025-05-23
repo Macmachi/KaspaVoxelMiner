@@ -80,11 +80,11 @@ function detectMobile() {
                (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
     
     if (isMobile) {
-        // Masquer toutes les instructions sur mobile
+        // Hide all instructions on mobile
         document.getElementById('desktop-instructions').style.display = 'none';
         document.getElementById('mobile-instructions').style.display = 'none';
         
-        // Masquer également les contrôles mobiles car nous utiliserons les gestes tactiles
+        // Also hide mobile controls because we'll use touch gestures
         if (document.getElementById('mobile-controls')) {
             document.getElementById('mobile-controls').style.display = 'none';
         }
@@ -202,7 +202,7 @@ function createKaspaTexture() {
     
     ctx.fill();
     
-    // Plus de bordure autour du cercle
+    // No more border around the circle
     
     return new THREE.CanvasTexture(canvas);
 }
@@ -483,17 +483,17 @@ function handleBlockClick(event, x, y) {
         const gridZ = clickedBlock.userData.gridZ;
         
         if (gridX !== undefined && gridY !== undefined && gridZ !== undefined) {
-            // Vérifier s'il s'agit d'un bloc piège visible (révélé par les blocs adjacents)
+            // Check if it's a visible trap block (revealed by adjacent blocks)
             const block = gameGrid[gridX][gridY][gridZ];
             
-            // Si c'est un piège et qu'il est visible (rouge), déclencher l'explosion
+            // If it's a trap and it's visible (red), trigger the explosion
             if (block.type === BLOCK_TYPES.TRAP && block.revealed) {
-                // Déclencher l'explosion
+                // Trigger the explosion
                 gameOver(false);
                 return;
             }
             
-            // Sinon, révéler le bloc normalement
+            // Otherwise, reveal the block normally
             revealBlock(gridX, gridY, gridZ);
             
             // Add visual feedback for mobile
@@ -674,14 +674,14 @@ function calculateNeighborTraps() {
                 if (gameGrid[x][y][z].type !== BLOCK_TYPES.TRAP) {
                     let trapCount = 0;
                     
-                    // Vérifier seulement les 6 voisins directs (qui partagent une face)
+                    // Check only the 6 direct neighbors (that share a face)
                     const directions = [
-                        {dx: -1, dy: 0, dz: 0}, // gauche
-                        {dx: 1, dy: 0, dz: 0},  // droite
-                        {dx: 0, dy: -1, dz: 0}, // bas
-                        {dx: 0, dy: 1, dz: 0},  // haut
-                        {dx: 0, dy: 0, dz: -1}, // arrière
-                        {dx: 0, dy: 0, dz: 1}   // avant
+                        {dx: -1, dy: 0, dz: 0}, // left
+                        {dx: 1, dy: 0, dz: 0},  // right
+                        {dx: 0, dy: -1, dz: 0}, // bottom
+                        {dx: 0, dy: 1, dz: 0},  // top
+                        {dx: 0, dy: 0, dz: -1}, // back
+                        {dx: 0, dy: 0, dz: 1}   // front
                     ];
                     
                     for (const dir of directions) {
@@ -832,6 +832,9 @@ function createBlockMeshes() {
     const spacing = 1;
     const offset = (size - 1) * spacing / 2;
     
+    // Add a vertical offset for mobile devices to center the cube better
+    const mobileVerticalOffset = isMobile ? 1.5 : 0;
+    
     for (let x = 0; x < size; x++) {
         for (let y = 0; y < size; y++) {
             for (let z = 0; z < size; z++) {
@@ -850,7 +853,7 @@ function createBlockMeshes() {
                 const mesh = new THREE.Mesh(geometry, material);
                 mesh.position.set(
                     x * spacing - offset,
-                    y * spacing - offset,
+                    y * spacing - offset + mobileVerticalOffset, // Add vertical offset for mobile
                     z * spacing - offset
                 );
                 
@@ -1040,7 +1043,7 @@ function revealEmpty(x, y, z) {
         ];
         block.mesh.material = materials;
         
-        // Marquer ce bloc comme "insensible aux clics"
+        // Mark this block as "click-insensitive"
         block.mesh.userData.ignoreClick = true;
         
         // Check adjacent traps to update their pulse state
@@ -1058,25 +1061,25 @@ function revealEmpty(x, y, z) {
 function activateAdjacentTrapsPulse(x, y, z) {
     const size = gameGrid.length;
     
-    // Vérifier chaque piège dans la grille
+    // Check each trap in the grid
     for (let tx = 0; tx < size; tx++) {
         for (let ty = 0; ty < size; ty++) {
             for (let tz = 0; tz < size; tz++) {
-                // Vérifier uniquement les pièges non révélés
+                // Check only unrevealed traps
                 if (gameGrid[tx][ty][tz].type !== BLOCK_TYPES.TRAP || gameGrid[tx][ty][tz].revealed) continue;
                 
-                // Vérifier si tous les blocs adjacents non-pièges sont révélés
+                // Check if all non-trap adjacent blocks are revealed
                 let allNonTrapNeighborsRevealed = true;
                 let hasNonTrapNeighbor = false;
                 
-                // Vérifier seulement les 6 voisins directs (qui partagent une face)
+                // Check only the 6 direct neighbors (that share a face)
                 const directions = [
-                    {dx: -1, dy: 0, dz: 0}, // gauche
-                    {dx: 1, dy: 0, dz: 0},  // droite
-                    {dx: 0, dy: -1, dz: 0}, // bas
-                    {dx: 0, dy: 1, dz: 0},  // haut
-                    {dx: 0, dy: 0, dz: -1}, // arrière
-                    {dx: 0, dy: 0, dz: 1}   // avant
+                    {dx: -1, dy: 0, dz: 0}, // left
+                    {dx: 1, dy: 0, dz: 0},  // right
+                    {dx: 0, dy: -1, dz: 0}, // bottom
+                    {dx: 0, dy: 1, dz: 0},  // top
+                    {dx: 0, dy: 0, dz: -1}, // back
+                    {dx: 0, dy: 0, dz: 1}   // front
                 ];
                 
                 for (const dir of directions) {
@@ -1084,15 +1087,15 @@ function activateAdjacentTrapsPulse(x, y, z) {
                     const ny = ty + dir.dy;
                     const nz = tz + dir.dz;
                     
-                    // Vérifier si le voisin est dans les limites de la grille
+                    // Check if the neighbor is within the grid boundaries
                     if (nx >= 0 && nx < size && ny >= 0 && ny < size && nz >= 0 && nz < size) {
                         const neighbor = gameGrid[nx][ny][nz];
                         
-                        // Si c'est un bloc non-piège
+                        // If it's a non-trap block
                         if (neighbor.type !== BLOCK_TYPES.TRAP) {
                             hasNonTrapNeighbor = true;
                             
-                            // Si ce bloc n'est pas révélé, le piège ne doit pas être visible
+                            // If this block is not revealed, the trap should not be visible
                             if (!neighbor.revealed) {
                                 allNonTrapNeighborsRevealed = false;
                                 break;
@@ -1101,15 +1104,15 @@ function activateAdjacentTrapsPulse(x, y, z) {
                     }
                 }
                 
-                // Si tous les blocs adjacents non-pièges sont révélés, révéler le piège
+                // If all adjacent non-trap blocks are revealed, reveal the trap
                 if (hasNonTrapNeighbor && allNonTrapNeighborsRevealed) {
                     const trapBlock = gameGrid[tx][ty][tz];
                     
-                    // Marquer comme révélé et le faire pulser
+                    // Mark as revealed and make it pulse
                     trapBlock.revealed = true;
                     trapBlock.pulsing = true;
                     
-                    // Rendre le piège visible (rouge et pulsant)
+                    // Make the trap visible (red and pulsing)
                     if (trapBlock.mesh) {
                         if (Array.isArray(trapBlock.mesh.material)) {
                             trapBlock.mesh.material.forEach(mat => {
@@ -1227,20 +1230,20 @@ function createKaspaIndicator(x, y, z) {
     animate();
 }
 
-// Revelation propagation (flood fill) - Version équilibrée
+// Revelation propagation (flood fill) - Balanced version
 function propagateReveal(x, y, z) {
     const size = gameGrid.length;
     const queue = [{ x, y, z }];
     const visited = new Set();
     
-    // Définir seulement les 6 voisins directs (qui partagent une face)
+    // Define only the 6 direct neighbors (that share a face)
     const directions = [
-        {dx: -1, dy: 0, dz: 0}, // gauche
-        {dx: 1, dy: 0, dz: 0},  // droite
-        {dx: 0, dy: -1, dz: 0}, // bas
-        {dx: 0, dy: 1, dz: 0},  // haut
-        {dx: 0, dy: 0, dz: -1}, // arrière
-        {dx: 0, dy: 0, dz: 1}   // avant
+        {dx: -1, dy: 0, dz: 0}, // left
+        {dx: 1, dy: 0, dz: 0},  // right
+        {dx: 0, dy: -1, dz: 0}, // bottom
+        {dx: 0, dy: 1, dz: 0},  // top
+        {dx: 0, dy: 0, dz: -1}, // back
+        {dx: 0, dy: 0, dz: 1}   // front
     ];
     
     // Limite de propagation - équilibre entre trop facile et trop difficile
