@@ -1,0 +1,72 @@
+<!-- Rymentz 2025 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaspa Voxel Miner - 3D Minesweeper</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="ui-container">
+        <div id="header">
+            <h1>Kaspa Voxel Miner</h1>
+            <div id="game-info">
+                <div id="timer">
+                    <span>Time: </span>
+                    <span id="time-display">00:00</span>
+                </div>
+                <div id="best-time">
+                    <span>Best Time: </span>
+                    <span id="best-time-display">--:--</span>
+                </div>
+                <div id="kas-counter">
+                    <span>Kas Collected: </span>
+                    <span id="kas-count">0/0</span>
+                </div>
+            </div>
+        </div>
+        
+        <div id="game-controls">
+            <button id="new-game-btn">New Game</button>
+            <div id="difficulty-selector">
+                <label for="difficulty">Difficulty:</label>
+                <select id="difficulty">
+                    <option value="easy">Easy (5x5x5)</option>
+                    <option value="medium" selected>Medium (6x6x6)</option>
+                    <option value="hard">Hard (7x7x7)</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="game-status">
+            <div id="status-message"></div>
+        </div>
+    </div>
+
+    <div id="game-container">
+        <div id="instructions">
+            <p>Click on blocks to reveal them. Find all Kaspa blocks without hitting any traps!</p>
+            <p>Use mouse to rotate camera and scroll wheel to zoom.</p>
+        </div>
+    </div>
+
+    <div id="donation-message">
+        <p>If you appreciate this project, you can support the developer by donating to the following Kaspa address:</p>
+        <code>kaspa:qqngpnpwrfhexgu8kzk3lteu5fakh6fylmt53gt7qwtf4vttjyvfyrnr8shwa</code>
+    </div>
+
+    <div id="game-over-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="modal-title"></h2>
+            <p id="modal-message"></p>
+            <div id="modal-stats"></div>
+            <button id="modal-new-game">New Game</button>
+        </div>
+    </div>
+
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
