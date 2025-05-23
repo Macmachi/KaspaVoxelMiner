@@ -70,7 +70,11 @@
 
     <div id="donation-message">
         <p>If you appreciate this project, you can support the developer by donating to the following Kaspa address:</p>
-        <code>kaspa:qqngpnpwrfhexgu8kzk3lteu5fakh6fylmt53gt7qwtf4vttjyvfyrnr8shwa</code>
+        <div class="copy-container">
+            <code id="kaspa-address">kaspa:qqngpnpwrfhexgu8kzk3lteu5fakh6fylmt53gt7qwtf4vttjyvfyrnr8shwa</code>
+            <button id="copy-address" title="Copy address to clipboard">Copy</button>
+        </div>
+        <span id="copy-feedback" style="display: none; color: #71C7BA; font-size: 0.8rem; margin-top: 5px;">Address copied to clipboard!</span>
     </div>
 
     <div id="game-over-modal" class="modal">

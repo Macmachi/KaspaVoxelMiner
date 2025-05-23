@@ -167,16 +167,15 @@ function createKaspaTexture() {
     canvas.height = 256;
     const ctx = canvas.getContext('2d');
     
-    // Fill background with dark color
-    ctx.fillStyle = '#222222'; // Dark background
-    ctx.fillRect(0, 0, 256, 256);
+    // Fill background with transparent color
+    ctx.clearRect(0, 0, 256, 256);
     
     // Draw a K with a coin/circle shape
     ctx.fillStyle = '#71C7BA'; // Kaspa teal color for the circle
     
     // Draw the circle
     ctx.beginPath();
-    ctx.arc(128, 128, 90, 0, Math.PI * 2);
+    ctx.arc(128, 128, 100, 0, Math.PI * 2); // Increased size from 90 to 100
     ctx.fill();
     
     // Draw the inverted K shape (like in the Kaspa logo)
@@ -201,8 +200,6 @@ function createKaspaTexture() {
     ctx.closePath();
     
     ctx.fill();
-    
-    // No more border around the circle
     
     return new THREE.CanvasTexture(canvas);
 }
@@ -521,6 +518,9 @@ function setupEventListeners() {
     // Window resize
     window.addEventListener('resize', onWindowResize);
     
+    // Setup clipboard copy for donation address
+    setupCopyAddress();
+    
     // Prevent context menu on touch devices
     if (isMobile) {
         document.addEventListener('contextmenu', function(e) {
@@ -545,6 +545,67 @@ function setupEventListeners() {
                 e.preventDefault();
             }
         }, { passive: false });
+    }
+}
+
+// Setup clipboard copy functionality for the donation address
+function setupCopyAddress() {
+    const copyButton = document.getElementById('copy-address');
+    const kaspaAddress = document.getElementById('kaspa-address');
+    const copyFeedback = document.getElementById('copy-feedback');
+    
+    if (copyButton && kaspaAddress) {
+        // Copy functionality for the button
+        copyButton.addEventListener('click', copyAddressToClipboard);
+        
+        // Also allow clicking on the address itself
+        kaspaAddress.addEventListener('click', copyAddressToClipboard);
+    }
+    
+    function copyAddressToClipboard() {
+        const textToCopy = kaspaAddress.textContent;
+        
+        // Use the Clipboard API if available
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(textToCopy)
+                .then(showCopySuccess)
+                .catch(handleCopyError);
+        } else {
+            // Fallback for browsers that don't support Clipboard API
+            const textArea = document.createElement('textarea');
+            textArea.value = textToCopy;
+            textArea.style.position = 'fixed';  // Avoid scrolling to bottom
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                showCopySuccess();
+            } catch (err) {
+                handleCopyError(err);
+            }
+            
+            document.body.removeChild(textArea);
+        }
+        
+        // Add visual feedback for the button
+        copyButton.classList.add('tap-feedback');
+        setTimeout(() => copyButton.classList.remove('tap-feedback'), 200);
+    }
+    
+    function showCopySuccess() {
+        if (copyFeedback) {
+            copyFeedback.style.display = 'block';
+            setTimeout(() => {
+                copyFeedback.style.display = 'none';
+            }, 2000);
+        }
+    }
+    
+    function handleCopyError(err) {
+        console.error('Copy failed:', err);
+        // Optionally show an error message to the user
     }
 }
 
@@ -1172,14 +1233,71 @@ function createKaspaIndicator(x, y, z) {
     const spacing = 1;
     const offset = (size - 1) * spacing / 2;
     
-    // Create a thin cylinder (like a coin) with Kaspa texture
-    const geometry = new THREE.CylinderGeometry(0.2, 0.2, 0.05, 16);
+    // Add mobile vertical offset to fix position on mobile
+    const mobileVerticalOffset = isMobile ? 1.5 : 0;
+    
+    // Function to create a rotated Kaspa texture for vertical display
+    function createVerticalKaspaTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        
+        // Fill background with transparent color
+        ctx.clearRect(0, 0, 256, 256);
+        
+        // Draw a K with a coin/circle shape
+        ctx.fillStyle = '#71C7BA'; // Kaspa teal color for the circle
+        
+        // Draw the circle
+        ctx.beginPath();
+        ctx.arc(128, 128, 100, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // We need to rotate the canvas context to draw the K vertically
+        ctx.save();
+        ctx.translate(128, 128);
+        ctx.rotate(-Math.PI/2); // Rotate -90 degrees (counterclockwise) to preserve the inverted K
+        ctx.translate(-128, -128);
+        
+        // Draw the truly inverted K shape (mirror image of a K)
+        ctx.fillStyle = '#FFFFFF'; // White color for the K
+        ctx.beginPath();
+        
+        // Right vertical bar of inverted K (the vertical bar should be on the right side for a mirrored K)
+        ctx.rect(143, 68, 20, 120);
+        
+        // Upper diagonal of inverted K (going left)
+        ctx.moveTo(143, 128);
+        ctx.lineTo(93, 68);
+        ctx.lineTo(83, 88);
+        ctx.lineTo(123, 138);
+        ctx.closePath();
+        
+        // Lower diagonal of inverted K (going left)
+        ctx.moveTo(143, 128);
+        ctx.lineTo(93, 188);
+        ctx.lineTo(103, 198);
+        ctx.lineTo(143, 148);
+        ctx.closePath();
+        
+        ctx.fill();
+        ctx.restore();
+        
+        return new THREE.CanvasTexture(canvas);
+    }
+    
+    // Create a larger cylinder (like a coin) with Kaspa texture
+    const geometry = new THREE.CylinderGeometry(0.3, 0.3, 0.05, 16); // Increased radius from 0.2 to 0.3
     let material;
     
-    if (kaspaTexture) {
+    // Use the vertically oriented Kaspa texture for the coin
+    const verticalKaspaTexture = createVerticalKaspaTexture();
+    
+    if (verticalKaspaTexture) {
         // Create materials for the coin faces
         const kaspaTexturedMaterial = new THREE.MeshBasicMaterial({ 
-            map: kaspaTexture,
+            map: verticalKaspaTexture,
             color: 0xffffff,
             transparent: true
         });
@@ -1201,27 +1319,27 @@ function createKaspaIndicator(x, y, z) {
     const indicator = new THREE.Mesh(geometry, material);
     indicator.position.set(
         x * spacing - offset,
-        y * spacing - offset,
+        y * spacing - offset + mobileVerticalOffset, // Apply mobile vertical offset
         z * spacing - offset
     );
     
-    // Rotate the coin to be vertical initially
+    // Keep the coin vertical (standing on edge)
     indicator.rotation.x = Math.PI / 2;
     
     indicator.userData = { isGameBlock: true, isIndicator: true };
     scene.add(indicator);
     
-    // Coin spinning animation (like a coin flip)
+    // Coin spinning animation (spinning around itself vertically like a wheel)
     const originalY = indicator.position.y;
     const animate = () => {
         if (indicator.parent) {
             // Floating motion
             indicator.position.y = originalY + Math.sin(Date.now() * 0.003) * 0.1;
             
-            // Spinning motion (around Y axis for coin flip effect)
-            indicator.rotation.y += 0.05;
+            // Spinning motion around Z axis (makes it spin like a wheel)
+            indicator.rotation.z += 0.05;
             
-            // Slight wobble on X axis for more realistic coin motion
+            // Slight wobble for more realistic motion
             indicator.rotation.x = Math.PI / 2 + Math.sin(Date.now() * 0.002) * 0.1;
             
             requestAnimationFrame(animate);

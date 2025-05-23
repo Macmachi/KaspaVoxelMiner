@@ -248,7 +248,16 @@ h1 {
     font-size: 0.9rem;
 }
 
-#donation-message code {
+.copy-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: 0 auto;
+    max-width: 90%;
+}
+
+#kaspa-address {
     background: rgba(113, 199, 186, 0.2);
     color: #71C7BA;
     padding: 8px 12px;
@@ -256,8 +265,30 @@ h1 {
     font-family: 'Courier New', monospace;
     font-size: 0.85rem;
     border: 1px solid #71C7BA;
-    display: inline-block;
+    flex: 1;
+    text-align: center;
     word-break: break-all;
+    cursor: pointer;
+}
+
+#copy-address {
+    background: #71C7BA;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#copy-address:hover {
+    background: #8DD3CA;
+}
+
+#copy-address:active {
+    transform: scale(0.95);
 }
 
 /* Modal styles */
