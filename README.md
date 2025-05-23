@@ -6,6 +6,10 @@ A 3D minesweeper game with voxel blocks in the Kaspa universe, built with Three.
 
 Kaspa Voxel Miner is an innovative 3D version of the classic minesweeper game, where you must discover all hidden Kaspa blocks without hitting any traps. The game offers an immersive 3D experience with smooth camera controls and block destruction animations.
 
+## Live Demo
+
+Play the game at: https://macmachi.github.io/KaspaVoxelMiner/
+
 ## Features
 
 - 🎮 Immersive 3D gameplay with camera rotation
